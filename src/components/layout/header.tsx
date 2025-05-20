@@ -22,9 +22,9 @@ const beartIndiaLogoUrl = "/images/beart-india-logo.svg";
 const BASE_LOGO_WIDTH_INITIAL = 180; 
 const BASE_LOGO_HEIGHT_INITIAL = 64; 
 
-const DESKTOP_HEADER_HEIGHT_INITIAL = 100; // Initial height for desktop (not scrolled)
-const DESKTOP_HEADER_HEIGHT_SCROLLED = 70; // Height for desktop (scrolled)
-const MOBILE_HEADER_HEIGHT = 70; // Height for mobile
+const DESKTOP_HEADER_HEIGHT_INITIAL = 120; // Initial height for desktop (not scrolled)
+const DESKTOP_HEADER_HEIGHT_SCROLLED = 90; // Height for desktop (scrolled)
+const MOBILE_HEADER_HEIGHT = 90; // Height for mobile
 
 // Factors for dynamic resizing
 const SCROLLED_LOGO_HEIGHT_FACTOR = 1.0;
