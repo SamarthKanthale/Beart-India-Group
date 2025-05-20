@@ -5,42 +5,45 @@ import { cert, getApps, initializeApp, App as FirebaseAdminApp } from 'firebase-
 
 const adminApps: { [key: string]: FirebaseAdminApp } = {};
 
+/**
+ * Initializes and returns a named Firebase Admin app using credentials from environment variables.
+ * Works best with GOOGLE_APPLICATION_CREDENTIALS_JSON on Netlify.
+ */
 export async function initializeFirebaseAdminApp(appName: string): FirebaseAdminApp {
+  // Reuse already initialized instance
   if (adminApps[appName]) {
-    console.log(`Firebase Admin SDK (${appName}): Reusing existing initialized app.`);
     return adminApps[appName];
   }
 
+  // Reuse existing global app (if any)
   const existingApp = getApps().find(app => app.name === appName);
   if (existingApp) {
     adminApps[appName] = existingApp;
-    console.log(`Firebase Admin SDK (${appName}): Found existing app instance.`);
     return existingApp;
   }
 
-  // ✅ Primary method: Use GOOGLE_APPLICATION_CREDENTIALS_JSON
+  // Try loading credentials from Netlify environment variable
   const credsJsonString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (credsJsonString) {
-    console.log(`Firebase Admin SDK (${appName}): Attempting to initialize with GOOGLE_APPLICATION_CREDENTIALS_JSON.`);
-    try {
-      const serviceAccount = JSON.parse(credsJsonString);
-      if (typeof serviceAccount === 'object' && serviceAccount !== null && serviceAccount.project_id) {
-        const app = initializeApp({ credential: cert(serviceAccount) }, appName);
-        adminApps[appName] = app;
-        console.log(`Firebase Admin SDK (${appName}): Initialized successfully using GOOGLE_APPLICATION_CREDENTIALS_JSON.`);
-        return app;
-      } else {
-        throw new Error('Parsed credentials are not a valid service account object.');
-      }
-    } catch (error: any) {
-      console.error(`Firebase Admin SDK (${appName}): Failed to initialize from GOOGLE_APPLICATION_CREDENTIALS_JSON: ${error.message}`);
-      throw new Error(`Firebase Admin SDK (${appName}): Invalid JSON in GOOGLE_APPLICATION_CREDENTIALS_JSON.`);
-    }
+  if (!credsJsonString) {
+    throw new Error(
+      `Firebase Admin SDK (${appName}): Missing 'GOOGLE_APPLICATION_CREDENTIALS_JSON' environment variable. 
+Please add it to your Netlify project settings as a plain JSON string.`
+    );
   }
 
-  // ❌ No other method available
-  throw new Error(
-    `Firebase Admin SDK (${appName}): Initialization failed. 'GOOGLE_APPLICATION_CREDENTIALS_JSON' environment variable is not set or invalid.
-Please configure your service account key JSON as an environment variable in Netlify.`
-  );
+  try {
+    const serviceAccount = JSON.parse(credsJsonString);
+    if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
+      throw new Error('Invalid service account format.');
+    }
+
+    const app = initializeApp({ credential: cert(serviceAccount) }, appName);
+    adminApps[appName] = app;
+    return app;
+  } catch (error: any) {
+    throw new Error(
+      `Firebase Admin SDK (${appName}): Failed to initialize with GOOGLE_APPLICATION_CREDENTIALS_JSON.\n` +
+      `Details: ${error.message}`
+    );
+  }
 }
