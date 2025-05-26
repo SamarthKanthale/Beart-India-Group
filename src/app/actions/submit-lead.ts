@@ -1,87 +1,82 @@
 'use server';
 
 import { z } from 'zod';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase-admin/firestore';
 import { initializeFirebaseAdminApp } from '@/lib/firebase-admin-init';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
+const APP_NAME = 'Beart India';
 
-// Define the schema for lead data validation
+type ActionResult = {
+  success: boolean;
+  data?: any;
+  error?: string;
+};
+
 const LeadSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().min(1, "Email is required").email("Invalid email address"),
-  phone: z.string()
-    .optional()
-    .refine(val => {
-    if (val === undefined || val === null || val.trim() === "") return true; 
-    return /^[+]?\d{10,15}$/.test(val.trim()); 
-  }, { 
-    message: "Invalid phone number format. Expected 10-15 digits, optionally starting with +."
-  }),
-  investmentAmount: z.string().optional(), 
-  loanAmount: z.string()
-    .optional()
-    .transform(val => (val === undefined || val === null || val.trim() === "" ? undefined : val.trim()))
-    .refine(val => {
-      if (val === undefined) return true; 
-      const num = Number(val);
-      return !isNaN(num) && num > 0;
-    }, {
-      message: "Loan amount must be a positive number if provided.",
-    }),
-  message: z.string().min(5, "Message should be at least 5 characters"),
-  serviceTitle: z.string().min(1, "Service title is missing"),
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email'),
+  phone: z.string().min(10, 'Phone number is required'),
+  investmentAmount: z.string().optional(),
+  loanAmount: z.string().optional(),
+  message: z.string().optional(),
+  serviceTitle: z.string().min(1, 'Service title is required'),
 });
-
-interface ActionResult {
-    success: boolean;
-    error?: string;
-    data?: z.infer<typeof LeadSchema>;
-}
-
-const APP_NAME = "leadApp";
 
 export async function submitLeadAction(formData: FormData): Promise<ActionResult> {
   const rawData = {
-    name: formData.get('name'), 
-    email: formData.get('email'), 
-    phone: formData.get('phone'), 
-    investmentAmount: formData.get('investmentAmount'), 
-    loanAmount: formData.get('loanAmount'), 
-    message: formData.get('message'), 
-    serviceTitle: formData.get('serviceTitle'), 
+    name: formData.get('name')?.toString() ?? '',
+    email: formData.get('email')?.toString() ?? '',
+    phone: formData.get('phone')?.toString() ?? '',
+    investmentAmount: formData.get('investmentAmount')?.toString() ?? undefined,
+    loanAmount: formData.get('loanAmount')?.toString() ?? undefined,
+    message: formData.get('message')?.toString() ?? '',
+    serviceTitle: formData.get('serviceTitle')?.toString() ?? '',
   };
 
-   const validationResult = LeadSchema.safeParse(rawData);
+  const validationResult = LeadSchema.safeParse(rawData);
 
-   if (!validationResult.success) {
-     const errorMessages = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
-     console.error("Lead Form Validation Error:", validationResult.error.flatten());
-     return { success: false, error: `Validation failed: ${errorMessages}` };
-   }
+  if (!validationResult.success) {
+    const errorMessages = validationResult.error.errors
+      .map((e) => `${e.path.join('.')}: ${e.message}`)
+      .join('; ');
+    console.error('Lead Form Validation Error:', validationResult.error.flatten());
+    return { success: false, error: `Validation failed: ${errorMessages}` };
+  }
 
-    const validatedData = validationResult.data;
+  const validatedData = validationResult.data;
 
   try {
-      console.log(`Initializing Firebase Admin for ${APP_NAME}...`);
-      const app = initializeFirebaseAdminApp(APP_NAME);
-      console.log(`Firebase Admin for ${APP_NAME} initialized.`);
+    console.log(`Initializing Firebase Admin for ${APP_NAME}...`);
+    const app = await initializeFirebaseAdminApp(APP_NAME);
+    console.log(`Firebase Admin for ${APP_NAME} initialized.`);
 
-      const db = getFirestore(app);
-      console.log(`Attempting to save lead for ${validatedData.serviceTitle} to Firestore for ${APP_NAME}:`, validatedData);
-      await addDoc(collection(db, "leads"), {
+    const db = getFirestore(app);
+    console.log(
+      `Attempting to save lead for ${validatedData.serviceTitle} to Firestore for ${APP_NAME}:`,
+      validatedData
+    );
+
+    // Remove undefined fields before saving to Firestore
+    const dataToSave = Object.fromEntries(
+      Object.entries({
         ...validatedData,
-        submittedAt: serverTimestamp(), 
-      });
+        submittedAt: Timestamp.now(),
+      }).filter(([_, value]) => value !== undefined)
+    );
 
-      console.log(`Lead for ${validatedData.serviceTitle} saved to Firestore successfully:`, validatedData);
-      return { success: true, data: validatedData };
+    await db.collection('leads').add(dataToSave);
 
+
+    console.log(
+      `Lead for ${validatedData.serviceTitle} saved to Firestore successfully:`,
+      validatedData
+    );
+    return { success: true, data: validatedData };
   } catch (error: any) {
-      console.error(`Error in submitLeadAction for ${APP_NAME}:`, error.message);
-      if (error.message.includes("Failed to initialize")) {
-        // Specific error from initializeFirebaseAdminApp
-         return { success: false, error: `Firebase initialization failed: ${error.message}` };
-      }
-      return { success: false, error: "Failed to save lead data due to a server error. Please try again." };
+    console.error(`Error in submitLeadAction for ${APP_NAME}:`, error.message);
+    if (error.message.includes('Failed to initialize')) {
+      return { success: false, error: `Firebase initialization failed: ${error.message}` };
+    }
+    return { success: false, error: 'Failed to save lead data due to a server error. Please try again.' };
   }
 }
